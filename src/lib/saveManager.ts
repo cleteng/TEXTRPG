@@ -1,56 +1,67 @@
 import { supabase } from './supabase';
+import type { GameState } from '../engine/types';
 
-export interface SaveData {
-  id?: string;
-  game_id: string;
-  character_id: string;
-  state: any;
-  created_at?: string;
-  updated_at?: string;
+export interface SaveRecord {
+  id: string;
+  saveKey: string;
+  moduleId: string;
+  characterId: string;
+  state: GameState;
+  updatedAt: string;
 }
 
-export async function saveGame(gameId: string, characterId: string, state: any): Promise<void> {
-  const { error } = await supabase
-    .from('saves')
-    .upsert({
-      game_id: gameId,
-      character_id: characterId,
-      state,
-      updated_at: new Date().toISOString(),
-    }, { onConflict: 'game_id,character_id' });
+const TABLE = 'saves';
 
-  if (error) {
-    console.error('Failed to save game:', error);
-    throw error;
-  }
+function toCamel(row: Record<string, unknown>): SaveRecord {
+  return {
+    id: row.id as string,
+    saveKey: row.save_key as string,
+    moduleId: row.module_id as string,
+    characterId: row.character_id as string,
+    state: row.state as GameState,
+    updatedAt: row.updated_at as string,
+  };
 }
 
-export async function loadGame(gameId: string, characterId: string): Promise<any | null> {
+export async function listSaves(): Promise<SaveRecord[]> {
   const { data, error } = await supabase
-    .from('saves')
-    .select('state')
-    .eq('game_id', gameId)
-    .eq('character_id', characterId)
-    .single();
-
-  if (error) {
-    if (error.code === 'PGRST116') return null;
-    console.error('Failed to load game:', error);
-    throw error;
-  }
-
-  return data?.state ?? null;
+    .from(TABLE)
+    .select('id, save_key, module_id, character_id, state, updated_at')
+    .order('updated_at', { ascending: false });
+  if (error) throw error;
+  return (data ?? []).map(toCamel);
 }
 
-export async function listSaves(gameId?: string): Promise<SaveData[]> {
-  let query = supabase.from('saves').select('*').order('updated_at', { ascending: false });
-  if (gameId) {
-    query = query.eq('game_id', gameId);
-  }
-  const { data, error } = await query;
-  if (error) {
-    console.error('Failed to list saves:', error);
-    throw error;
-  }
-  return data || [];
+export async function getSave(saveKey: string): Promise<SaveRecord | null> {
+  const { data, error } = await supabase
+    .from(TABLE)
+    .select('id, save_key, module_id, character_id, state, updated_at')
+    .eq('save_key', saveKey)
+    .maybeSingle();
+  if (error) throw error;
+  return data ? toCamel(data) : null;
+}
+
+export async function upsertSave(saveKey: string, state: GameState): Promise<void> {
+  const { error } = await supabase
+    .from(TABLE)
+    .upsert(
+      {
+        save_key: saveKey,
+        module_id: state.moduleId,
+        character_id: state.characterId,
+        state: state as unknown as Record<string, unknown>,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'save_key' },
+    );
+  if (error) throw error;
+}
+
+export async function deleteSave(saveKey: string): Promise<void> {
+  const { error } = await supabase
+    .from(TABLE)
+    .delete()
+    .eq('save_key', saveKey);
+  if (error) throw error;
 }
