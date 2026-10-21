@@ -34,7 +34,7 @@ export async function loadGame(gameId: string, characterId: string): Promise<any
     .single();
 
   if (error) {
-    if (error.code === 'PGRST116') return null; // no rows
+    if (error.code === 'PGRST116') return null;
     console.error('Failed to load game:', error);
     throw error;
   }
